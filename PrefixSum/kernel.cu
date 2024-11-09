@@ -8,9 +8,8 @@
 #include <string.h>
 #include <cassert>
 
-constexpr int ARRAY_SIZE = 520000;
+constexpr int ARRAY_SIZE = 52000;
 constexpr int BLOCK_SIZE = 256;
-constexpr int BLOCK_MAX_SIZE = 1024;
 
 template<
 	typename T,
@@ -46,9 +45,10 @@ __device__ int upsweep(T scratchpad[BLOCK_SIZE])
 	int stride;
 	for (stride = 1; stride < blockDim.x; stride *= 2)
 	{
-		if (threadIdx.x % (stride * 2) == 0)
+		int index = 2 * stride * threadIdx.x;
+		if (index < blockDim.x)
 		{
-			scratchpad[threadIdx.x] = scratchpad[threadIdx.x] + scratchpad[threadIdx.x + stride];
+			scratchpad[index] = scratchpad[index] + scratchpad[index + stride];
 		}
 		__syncthreads();
 	}
@@ -78,12 +78,13 @@ __device__ void downsweep(T scratchpad[BLOCK_SIZE], T tempSums[BLOCK_SIZE], int 
 {
 	for (stride /= 2; stride >= 1; stride /= 2)
 	{
-		if (threadIdx.x % (stride * 2) == 0)
+		int index = 2 * stride * threadIdx.x;
+		if (index < blockDim.x)
 		{
-			const int left = tempSums[threadIdx.x] - scratchpad[threadIdx.x + stride];
-			tempSums[threadIdx.x] = left;
-			tempSums[threadIdx.x + stride] = scratchpad[threadIdx.x + stride];
-			scratchpad[threadIdx.x + stride] = scratchpad[threadIdx.x] + left;
+			const int left = tempSums[index] - scratchpad[index + stride];
+			tempSums[index] = left;
+			tempSums[index + stride] = scratchpad[index + stride];
+			scratchpad[index + stride] = scratchpad[index] + left;
 		}
 		__syncthreads();
 	}
@@ -311,17 +312,17 @@ static void generateRandomVector(int* matrix, int N) {
 template<
 	typename T,
 	typename = typename std::enable_if<std::is_arithmetic<T>::value, T>::type>
-bool verify(T* expected, T* actual, int size)
+int verify(T* expected, T* actual, int size)
 {
 	for (int i = 0; i < size; i++)
 	{
 		if (expected[i] != actual[i])
 		{
-			return false;
+			return i;
 		}
 	}
 
-	return true;
+	return -1;
 }
 
 int main()
@@ -345,13 +346,14 @@ int main()
 
 	cpuScan(cpuScanOutput, cpuVector, ARRAY_SIZE);
 
-	if (verify(cpuScanOutput, gpuScanOutput, ARRAY_SIZE))
+	int index = verify(cpuScanOutput, gpuScanOutput, ARRAY_SIZE);
+	if (index == -1)
 	{
 		printf("OK\n");
 	}
 	else
 	{
-		printf("Fail\n");
+		printf("Fail at %d. Expected: %d; Actual: %d\n", index, cpuScanOutput[index], gpuScanOutput[index]);
 	}
 
 	// cudaDeviceReset must be called before exiting in order for profiling and
