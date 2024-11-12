@@ -13,6 +13,7 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{95CB501E-A99F-4D6B-BB0E-99F3D81C0F5A}</ProjectGuid>
     <RootNamespace>CudaRuntime1</RootNamespace>
+    <ProjectName>GEMM</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">

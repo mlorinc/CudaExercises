@@ -1,4 +1,6 @@
 
+// GEMM excercise. Without alpha and beta.
+
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 
@@ -7,17 +9,15 @@
 #include <cstdlib>
 #include <ctime>
 
-//cudaError_t addWithCuda(int* c, const int* a, const int* b, unsigned int size);
-
-
+// Reference matrix multiply.
 static void matrixMultiply(int* c, const int* a, const int* b, int m, int k, int n)
 {
-	// Initialize the result matrix
+	// Initialize the result matrix.
 	for (int i = 0; i < m; i++)
 	{
 		for (int j = 0; j < n; j++)
 		{
-			c[i * n + j] = 0; // Set c[i][j] to 0 for accumulation
+			c[i * n + j] = 0;
 		}
 	}
 
@@ -27,7 +27,6 @@ static void matrixMultiply(int* c, const int* a, const int* b, int m, int k, int
 		{
 			for (int l = 0; l < k; l++)
 			{
-				// c[i][j] += a[i][l] * b[l][j];
 				c[i * n + j] += a[i * k + l] * b[l * n + j];
 			}
 		}
@@ -36,17 +35,18 @@ static void matrixMultiply(int* c, const int* a, const int* b, int m, int k, int
 
 static void matrixMultiplySIMD(int* c, const int* a, const int* b, int m, int k, int n)
 {
-	// Initialize the result matrix
-#pragma omp parallel for
+	// Initialize the result matrix.
+	#pragma omp parallel for
 	for (int i = 0; i < m; i++)
 	{
 		for (int j = 0; j < n; j++)
 		{
-			c[i * n + j] = 0; // Set c[i][j] to 0 for accumulation
+			// Set c[i][j] to 0 for accumulation.
+			c[i * n + j] = 0;
 		}
 	}
 
-#pragma omp parallel for collapse(3)
+	#pragma omp parallel for collapse(3)
 	for (int i = 0; i < m; i++)
 	{
 		for (int j = 0; j < n; j++)
@@ -62,19 +62,19 @@ static void matrixMultiplySIMD(int* c, const int* a, const int* b, int m, int k,
 
 static void matrixMultiplySIMDTilled(int* c, const int* a, const int* b, int m, int k, int n)
 {
-	// Initialize the result matrix
-#pragma omp parallel for
+	// Initialize the result matrix.
+	#pragma omp parallel for
 	for (int i = 0; i < m; i++)
 	{
 		for (int j = 0; j < n; j++)
 		{
-			c[i * n + j] = 0; // Set c[i][j] to 0 for accumulation
+			c[i * n + j] = 0;
 		}
 	}
 
 	constexpr int tile = 8;
 
-#pragma omp parallel for collapse(3)
+	#pragma omp parallel for collapse(3)
 	for (int i = 0; i < m; i++)
 	{
 		for (int j = 0; j < n; j++)
@@ -88,14 +88,17 @@ static void matrixMultiplySIMDTilled(int* c, const int* a, const int* b, int m, 
 	}
 }
 
-// CUDA Kernel for Matrix Multiplication
-__global__ void matrixMultiplyKernel(int* C, const int* A, const int* B, int m, int k, int n) {
+// CUDA Kernel for Matrix Multiplication without optimizations.
+__global__ void matrixMultiplyKernel(int* C, const int* A, const int* B, int m, int k, int n)
+{
 	int i = blockIdx.y * blockDim.y + threadIdx.y;
 	int j = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (i < m && j < n) {
+	if (i < m && j < n)
+	{
 		int sum = 0;
-		for (int l = 0; l < k; l++) {
+		for (int l = 0; l < k; l++)
+		{
 			sum += A[i * k + l] * B[l * n + j];
 		}
 		C[i * n + j] = sum;
@@ -103,8 +106,9 @@ __global__ void matrixMultiplyKernel(int* C, const int* A, const int* B, int m, 
 }
 
 constexpr int TILE_SIZE = 16;
-// CUDA Kernel for Matrix Multiplication
-__global__ void matrixTileMultiplyKernel(int* C, const int* A, const int* B, int m, int k, int n) {
+// CUDA Kernel for Matrix Multiplication using tiling and block cache.
+__global__ void matrixTileMultiplyKernel(int* C, const int* A, const int* B, int m, int k, int n)
+{
 	int tx = threadIdx.x;
 	int ty = threadIdx.y;
 	int bx = blockIdx.x;
@@ -119,14 +123,16 @@ __global__ void matrixTileMultiplyKernel(int* C, const int* A, const int* B, int
 	int sum = 0;
 	for (int i = 0; i < (k + TILE_SIZE - 1) / TILE_SIZE; i++)
 	{
-		if (row < m && (i * TILE_SIZE + tx) < k) {
+		if (row < m && (i * TILE_SIZE + tx) < k)
+		{
 			ATile[ty * TILE_SIZE + tx] = A[row * k + (i * TILE_SIZE + tx)];
 		}
 		else {
 			ATile[ty * TILE_SIZE + tx] = 0;
 		}
 
-		if (col < n && (i * TILE_SIZE + ty) < k) {
+		if (col < n && (i * TILE_SIZE + ty) < k)
+		{
 			BTile[tx * TILE_SIZE + ty] = B[((i * TILE_SIZE + ty) * n) + col];
 		}
 		else {
@@ -143,19 +149,24 @@ __global__ void matrixTileMultiplyKernel(int* C, const int* A, const int* B, int
 	C[row * n + col] = sum;
 }
 
-static void generateRandomMatrix(int* matrix, int rows, int cols) {
-	for (int i = 0; i < rows * cols; ++i) {
-		matrix[i] = rand() % 100; // Fill with random values from 0 to 99
+static void generateRandomMatrix(int* matrix, int rows, int cols)
+{
+	for (int i = 0; i < rows * cols; ++i)
+	{
+		matrix[i] = rand() % 100;
 	}
 }
 
-static void printMatrix(const int* matrix, int rows, int cols) {
-	for (int i = 0; i < rows; i++) {
-		for (int j = 0; j < cols; j++) {
+static void printMatrix(const int* matrix, int rows, int cols)
+{
+	for (int i = 0; i < rows; i++)
+	{
+		for (int j = 0; j < cols; j++)
+		{
 			// Print each element, using appropriate formatting for better visibility
-			std::cout << matrix[i * cols + j] << "\t";  // Tab-separated values
+			std::cout << matrix[i * cols + j] << "\t";
 		}
-		std::cout << std::endl;  // New line after each row
+		std::cout << std::endl;
 	}
 }
 
@@ -222,10 +233,14 @@ static float cudaMultiply(int* result, cudaEvent_t& start, cudaEvent_t& stop, vo
 }
 
 // Exact Comparison Function
-bool areMatricesEqual(const int* A, const int* B, int rows, int cols) {
-	for (int i = 0; i < rows; i++) {
-		for (int j = 0; j < cols; j++) {
-			if (A[i * cols + j] != B[i * cols + j]) {
+bool areMatricesEqual(const int* A, const int* B, int rows, int cols)
+{
+	for (int i = 0; i < rows; i++)
+	{
+		for (int j = 0; j < cols; j++)
+		{
+			if (A[i * cols + j] != B[i * cols + j])
+			{
 				return false; // Matrices differ at this element
 			}
 		}
@@ -280,13 +295,14 @@ int main()
 	//std::cout << "cuda:" << ms << " [ms]" << std::endl;
 	// Clean up
 
-	std::cout << areMatricesEqual(c, result, m, n) << std::endl;
+	std::cout << (areMatricesEqual(c, result, m, n) ? ("Ok") : "Fail") << std::endl;
 	_mm_free(a); _mm_free(b); _mm_free(c);
 
 	// cudaDeviceReset must be called before exiting in order for profiling and
 	// tracing tools such as Nsight and Visual Profiler to show complete traces.
 	cudaError_t cudaStatus = cudaDeviceReset();
-	if (cudaStatus != cudaSuccess) {
+	if (cudaStatus != cudaSuccess)
+	{
 		fprintf(stderr, "cudaDeviceReset failed!");
 		return 1;
 	}
